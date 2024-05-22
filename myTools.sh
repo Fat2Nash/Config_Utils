@@ -43,24 +43,6 @@ function OptionIvalid() {
     afficher_menu
 }
 
-# Boucle principale du script
-while true; do
-    afficher_menu
-    read -r -p "Choisissez une option : " choix
-    case $choix in
-    1) GitHealth ;;
-    2) installer_mysql_redis ;;
-    3) DependenceCheck ;;
-    4) SysBench ;;
-    5) InitLaraProject ;;
-    6)
-        echo "Au revoir !"
-        exit
-        ;;
-    *) OptionIvalid ;;
-    esac
-done
-
 # ======================
 # Section 2: Fonction GitHealth
 # description: Vérifie la configuration Git globale, l'URL distante du dépôt, l'authentification SSH avec GitHub et le credential.helper.
@@ -409,3 +391,20 @@ installer_mysql_redis() {
     read -r -p "Appuyez sur Entrée pour revenir au menu principal..."
 }
 
+# Boucle principale du script
+while true; do
+    afficher_menu
+    read -r -p "Choisissez une option : " choix
+    case $choix in
+    1) GitHealth ;;
+    2) installer_mysql_redis ;;
+    3) DependenceCheck ;;
+    4) SysBench ;;
+    5) InitLaraProject ;;
+    6)
+        echo "Au revoir !"
+        exit
+        ;;
+    *) OptionIvalid ;;
+    esac
+done
