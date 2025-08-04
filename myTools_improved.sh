@@ -228,6 +228,47 @@ check_authentication_method() {
     fi
 }
 
+# Diagnostic SSH détaillé
+diagnostic_ssh() {
+    print_info "Diagnostic SSH détaillé..."
+    
+    echo -e "${CYAN}=== Répertoire SSH ===${NC}"
+    if [ -d ~/.ssh ]; then
+        echo -e "${GREEN}✅ Répertoire ~/.ssh existe${NC}"
+        echo -e "${CYAN}Contenu du répertoire SSH:${NC}"
+        ls -la ~/.ssh/
+    else
+        echo -e "${RED}❌ Répertoire ~/.ssh n'existe pas${NC}"
+        return 1
+    fi
+    
+    echo -e "\n${CYAN}=== Clés SSH ===${NC}"
+    local pub_keys=$(find ~/.ssh -name "*.pub" -type f 2>/dev/null)
+    if [ -n "$pub_keys" ]; then
+        echo -e "${GREEN}✅ Clés publiques trouvées:${NC}"
+        echo "$pub_keys" | while read -r key; do
+            echo -e "${WHITE}$(basename "$key"):${NC}"
+            cat "$key"
+            echo ""
+        done
+    else
+        echo -e "${RED}❌ Aucune clé publique trouvée${NC}"
+    fi
+    
+    echo -e "\n${CYAN}=== Test de connexion SSH GitHub ===${NC}"
+    local ssh_test_output
+    ssh_test_output=$(ssh -T git@github.com 2>&1)
+    echo -e "${WHITE}Sortie SSH:${NC} $ssh_test_output"
+    
+    if echo "$ssh_test_output" | grep -q "successfully authenticated"; then
+        echo -e "${GREEN}✅ Connexion SSH GitHub réussie${NC}"
+    elif echo "$ssh_test_output" | grep -q "Permission denied"; then
+        echo -e "${YELLOW}⚠️ Clés SSH présentes mais non configurées sur GitHub${NC}"
+    else
+        echo -e "${RED}❌ Problème de connexion SSH${NC}"
+    fi
+}
+
 # Configuration automatique de Git
 setup_git_config() {
     print_info "Configuration de Git..."
@@ -279,16 +320,24 @@ check_ssh_keys() {
         ssh_keys_found=true
     fi
     
-    # Vérifier s'il y a des clés dans le répertoire SSH
-    if [ -d ~/.ssh ] && [ "$(ls -A ~/.ssh/*.pub 2>/dev/null)" ]; then
-        SSH_KEYS_EXIST=true
-        print_success "Clés SSH trouvées dans ~/.ssh/"
-        echo -e "${CYAN}Clés disponibles:${NC}"
-        ls -la ~/.ssh/*.pub
-        ssh_keys_found=true
+    # Vérifier s'il y a des clés dans le répertoire SSH (plus robuste)
+    if [ -d ~/.ssh ]; then
+        local pub_keys=$(find ~/.ssh -name "*.pub" -type f 2>/dev/null)
+        if [ -n "$pub_keys" ]; then
+            SSH_KEYS_EXIST=true
+            print_success "Clés SSH trouvées dans ~/.ssh/"
+            echo -e "${CYAN}Clés disponibles:${NC}"
+            echo "$pub_keys" | while read -r key; do
+                echo -e "${WHITE}$(basename "$key"):${NC}"
+                cat "$key"
+                echo ""
+            done
+            ssh_keys_found=true
+        fi
     fi
     
     if [ "$ssh_keys_found" = false ]; then
+        SSH_KEYS_EXIST=false
         print_warning "Aucune clé SSH trouvée"
         return 1
     else
@@ -330,25 +379,27 @@ generate_ssh_keys() {
 test_github_connection() {
     print_info "Test de connexion GitHub..."
     
-    # Test SSH
-    if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+    # Test SSH (plus robuste)
+    local ssh_test_output
+    ssh_test_output=$(ssh -T git@github.com 2>&1)
+    if echo "$ssh_test_output" | grep -q "successfully authenticated"; then
         GITHUB_CONNECTED=true
         print_success "Connexion GitHub SSH réussie"
         return 0
+    elif echo "$ssh_test_output" | grep -q "Permission denied"; then
+        print_warning "Clés SSH présentes mais non configurées sur GitHub"
     fi
     
     # Test HTTPS avec credential helper
-    if git config --global credential.helper >/dev/null 2>&1; then
-        local helper=$(git config --global credential.helper)
-        if [ -n "$helper" ]; then
-            GITHUB_CONNECTED=true
-            print_success "Connexion GitHub HTTPS configurée (credential helper: $helper)"
-            return 0
-        fi
+    local helper=$(git config --global credential.helper 2>/dev/null)
+    if [ -n "$helper" ]; then
+        GITHUB_CONNECTED=true
+        print_success "Connexion GitHub HTTPS configurée (credential helper: $helper)"
+        return 0
     fi
     
-    # Vérifier si on peut cloner un dépôt public (test de connectivité)
-    if curl -s https://api.github.com >/dev/null 2>&1; then
+    # Vérifier si on peut accéder à l'API GitHub (test de connectivité)
+    if curl -s --max-time 10 https://api.github.com >/dev/null 2>&1; then
         print_success "Connectivité GitHub API disponible"
         print_warning "Authentification GitHub non configurée (utilisez HTTPS ou configurez SSH)"
         return 0
@@ -409,9 +460,14 @@ github_setup_wizard() {
             echo -e "4. ${YELLOW}Copiez votre clé publique:${NC}"
             
             # Afficher la première clé publique trouvée
-            local pub_key=$(find ~/.ssh -name "*.pub" | head -1)
-            if [ -n "$pub_key" ]; then
-                echo -e "${WHITE}$(cat "$pub_key")${NC}"
+            local pub_keys=$(find ~/.ssh -name "*.pub" -type f 2>/dev/null)
+            if [ -n "$pub_keys" ]; then
+                local first_key=$(echo "$pub_keys" | head -1)
+                echo -e "${WHITE}$(cat "$first_key")${NC}"
+                echo -e "${CYAN}Ou utilisez une autre clé disponible:${NC}"
+                echo "$pub_keys" | while read -r key; do
+                    echo -e "${WHITE}$(basename "$key")${NC}"
+                done
             else
                 echo -e "${RED}Aucune clé publique trouvée${NC}"
             fi
@@ -469,7 +525,8 @@ afficher_menu() {
     echo -e "  ${CYAN}5.${NC} ${WHITE}Benchmark du système${NC}"
     echo -e "  ${CYAN}6.${NC} ${WHITE}Déployer une application Laravel${NC}"
     echo -e "  ${CYAN}7.${NC} ${WHITE}Diagnostic système complet${NC}"
-    echo -e "  ${CYAN}8.${NC} ${WHITE}Quitter${NC}"
+    echo -e "  ${CYAN}8.${NC} ${WHITE}Diagnostic SSH détaillé${NC}"
+    echo -e "  ${CYAN}9.${NC} ${WHITE}Quitter${NC}"
     echo -e "\n${WHITE}================================================${NC}"
 }
 
@@ -850,7 +907,8 @@ main() {
             5) SysBench ;;
             6) InitLaraProject ;;
             7) diagnostic_systeme ;;
-            8)
+            8) diagnostic_ssh ;;
+            9)
                 print_success "Au revoir !"
                 exit 0
                 ;;
