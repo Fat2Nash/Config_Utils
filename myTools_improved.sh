@@ -97,6 +97,13 @@ ask_confirmation() {
     [[ "$response" =~ ^[Oo]$ ]]
 }
 
+# Fonction pour attendre l'utilisateur
+wait_for_user() {
+    local message=${1:-"Appuyez sur Entrée pour revenir au menu principal..."}
+    echo -e "\n${CYAN}$message${NC}"
+    read -r
+}
+
 # Fonction pour vérifier si une commande existe
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -230,7 +237,7 @@ check_authentication_method() {
 
 # Diagnostic SSH détaillé
 diagnostic_ssh() {
-    print_info "Diagnostic SSH détaillé..."
+    print_title "Diagnostic SSH Détaillé"
     
     echo -e "${CYAN}=== Répertoire SSH ===${NC}"
     if [ -d ~/.ssh ]; then
@@ -239,6 +246,7 @@ diagnostic_ssh() {
         ls -la ~/.ssh/
     else
         echo -e "${RED}❌ Répertoire ~/.ssh n'existe pas${NC}"
+        wait_for_user
         return 1
     fi
     
@@ -267,6 +275,9 @@ diagnostic_ssh() {
     else
         echo -e "${RED}❌ Problème de connexion SSH${NC}"
     fi
+    
+    print_success "Diagnostic SSH terminé"
+    wait_for_user
 }
 
 # Configuration automatique de Git
@@ -490,6 +501,9 @@ github_setup_wizard() {
         git config --global credential.helper store
         print_success "Credential helper configuré"
     fi
+    
+    print_success "Assistant de configuration GitHub terminé"
+    wait_for_user
 }
 
 # ======================
@@ -575,7 +589,7 @@ GitHealth() {
         print_warning "Aucun credential helper configuré"
     fi
     
-    read -r -p "Appuyez sur Entrée pour continuer..."
+    wait_for_user "Appuyez sur Entrée pour continuer..."
 }
 
 # Vérification des dépendances améliorée
@@ -612,7 +626,7 @@ DependenceCheck() {
         fi
     fi
     
-    read -r -p "Appuyez sur Entrée pour continuer..."
+    wait_for_user "Appuyez sur Entrée pour continuer..."
 }
 
 # Benchmark système amélioré
@@ -682,7 +696,7 @@ SysBench() {
     echo -e "${WHITE}IPv6:${NC}"
     ip a | grep "inet6 " | grep -v "::1"
     
-    read -r -p "Appuyez sur Entrée pour continuer..."
+    wait_for_user "Appuyez sur Entrée pour continuer..."
 }
 
 # Installation MySQL et Redis améliorée
@@ -691,6 +705,7 @@ installer_mysql_redis() {
     
     if [ "$SUDO_AVAILABLE" = false ]; then
         print_error "Droits sudo requis pour cette opération"
+        wait_for_user
         return 1
     fi
     
@@ -721,6 +736,7 @@ installer_mysql_redis() {
         fi
     else
         print_error "Erreur lors de l'installation de MySQL"
+        wait_for_user
         return 1
     fi
     
@@ -740,10 +756,12 @@ installer_mysql_redis() {
         fi
     else
         print_error "Erreur lors de l'installation de Redis"
+        wait_for_user
         return 1
     fi
     
-    read -r -p "Appuyez sur Entrée pour continuer..."
+    print_success "Installation MySQL et Redis terminée"
+    wait_for_user
 }
 
 # Déploiement Laravel amélioré
@@ -759,6 +777,7 @@ InitLaraProject() {
     
     if [ -z "$github_url" ] || [ -z "$destination_folder" ]; then
         print_error "URL et nom de dossier requis"
+        wait_for_user
         return 1
     fi
     
@@ -769,6 +788,7 @@ InitLaraProject() {
             print_success "Dossier supprimé"
         else
             print_error "Opération annulée"
+            wait_for_user
             return 1
         fi
     fi
@@ -780,6 +800,7 @@ InitLaraProject() {
         cd "$destination_folder" || return 1
     else
         print_error "Erreur lors du clonage"
+        wait_for_user
         return 1
     fi
     
@@ -796,6 +817,7 @@ InitLaraProject() {
             print_success "Dépendances Composer installées"
         else
             print_error "Erreur lors de l'installation Composer"
+            wait_for_user
             return 1
         fi
     fi
@@ -807,6 +829,7 @@ InitLaraProject() {
             print_success "Dépendances npm installées"
         else
             print_error "Erreur lors de l'installation npm"
+            wait_for_user
             return 1
         fi
     fi
@@ -832,7 +855,7 @@ InitLaraProject() {
     fi
     
     print_success "Déploiement Laravel terminé"
-    read -r -p "Appuyez sur Entrée pour continuer..."
+    wait_for_user
 }
 
 # Diagnostic système complet
@@ -870,7 +893,7 @@ diagnostic_systeme() {
         ss -tlnp
     fi
     
-    read -r -p "Appuyez sur Entrée pour continuer..."
+    wait_for_user "Appuyez sur Entrée pour continuer..."
 }
 
 # ======================
