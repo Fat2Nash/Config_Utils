@@ -2,6 +2,8 @@
 
 Un outil complet de configuration et déploiement pour serveurs Linux avec une interface utilisateur moderne et des fonctionnalités avancées.
 
+**Auteur :** Fat2Nash
+
 ## ✨ Nouvelles Fonctionnalités
 
 ### 🔧 Assistant de Configuration GitHub
@@ -207,4 +209,4 @@ En cas de problème :
 
 **Version :** 2.0.0  
 **Dernière mise à jour :** $(date)  
-**Auteur :** Assistant IA
+**Auteur :** Fat2Nash

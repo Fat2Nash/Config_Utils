@@ -2,7 +2,7 @@
 
 # ======================
 # Script MyTools - Version Améliorée
-# Auteur: Assistant IA
+# Auteur: Fat2Nash
 # Description: Outil complet de configuration et déploiement
 # ======================
 
