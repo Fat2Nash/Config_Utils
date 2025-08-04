@@ -187,10 +187,44 @@ check_git_config() {
     if [ -n "$git_name" ] && [ -n "$git_email" ]; then
         GIT_CONFIGURED=true
         print_success "Configuration Git trouvée: $git_name <$git_email>"
+        
+        # Vérifier le type d'authentification utilisé
+        check_authentication_method
+        
         return 0
     else
         print_warning "Configuration Git manquante"
         return 1
+    fi
+}
+
+# Vérifier la méthode d'authentification utilisée
+check_authentication_method() {
+    print_info "Vérification de la méthode d'authentification..."
+    
+    # Vérifier si on est dans un dépôt Git
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        local remote_url=$(git remote get-url origin 2>/dev/null)
+        
+        if [[ "$remote_url" == git@github.com:* ]]; then
+            print_success "Méthode d'authentification: SSH"
+            print_info "URL distante: $remote_url"
+        elif [[ "$remote_url" == https://github.com/* ]]; then
+            print_success "Méthode d'authentification: HTTPS"
+            print_info "URL distante: $remote_url"
+            
+            # Vérifier le credential helper
+            local helper=$(git config --global credential.helper)
+            if [ -n "$helper" ]; then
+                print_success "Credential helper configuré: $helper"
+            else
+                print_warning "Aucun credential helper configuré pour HTTPS"
+            fi
+        else
+            print_info "URL distante: $remote_url"
+        fi
+    else
+        print_info "Pas dans un dépôt Git"
     fi
 }
 
@@ -221,13 +255,44 @@ setup_git_config() {
 check_ssh_keys() {
     print_info "Vérification des clés SSH..."
     
+    # Vérifier différents types de clés SSH
+    local ssh_keys_found=false
+    
+    # Vérifier les clés RSA
     if [ -f ~/.ssh/id_rsa ] && [ -f ~/.ssh/id_rsa.pub ]; then
         SSH_KEYS_EXIST=true
-        print_success "Clés SSH trouvées"
-        return 0
-    else
+        print_success "Clés SSH RSA trouvées"
+        ssh_keys_found=true
+    fi
+    
+    # Vérifier les clés ED25519
+    if [ -f ~/.ssh/id_ed25519 ] && [ -f ~/.ssh/id_ed25519.pub ]; then
+        SSH_KEYS_EXIST=true
+        print_success "Clés SSH ED25519 trouvées"
+        ssh_keys_found=true
+    fi
+    
+    # Vérifier les clés ECDSA
+    if [ -f ~/.ssh/id_ecdsa ] && [ -f ~/.ssh/id_ecdsa.pub ]; then
+        SSH_KEYS_EXIST=true
+        print_success "Clés SSH ECDSA trouvées"
+        ssh_keys_found=true
+    fi
+    
+    # Vérifier s'il y a des clés dans le répertoire SSH
+    if [ -d ~/.ssh ] && [ "$(ls -A ~/.ssh/*.pub 2>/dev/null)" ]; then
+        SSH_KEYS_EXIST=true
+        print_success "Clés SSH trouvées dans ~/.ssh/"
+        echo -e "${CYAN}Clés disponibles:${NC}"
+        ls -la ~/.ssh/*.pub
+        ssh_keys_found=true
+    fi
+    
+    if [ "$ssh_keys_found" = false ]; then
         print_warning "Aucune clé SSH trouvée"
         return 1
+    else
+        return 0
     fi
 }
 
@@ -265,12 +330,30 @@ generate_ssh_keys() {
 test_github_connection() {
     print_info "Test de connexion GitHub..."
     
+    # Test SSH
     if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
         GITHUB_CONNECTED=true
-        print_success "Connexion GitHub réussie"
+        print_success "Connexion GitHub SSH réussie"
+        return 0
+    fi
+    
+    # Test HTTPS avec credential helper
+    if git config --global credential.helper >/dev/null 2>&1; then
+        local helper=$(git config --global credential.helper)
+        if [ -n "$helper" ]; then
+            GITHUB_CONNECTED=true
+            print_success "Connexion GitHub HTTPS configurée (credential helper: $helper)"
+            return 0
+        fi
+    fi
+    
+    # Vérifier si on peut cloner un dépôt public (test de connectivité)
+    if curl -s https://api.github.com >/dev/null 2>&1; then
+        print_success "Connectivité GitHub API disponible"
+        print_warning "Authentification GitHub non configurée (utilisez HTTPS ou configurez SSH)"
         return 0
     else
-        print_warning "Connexion GitHub échouée"
+        print_error "Aucune connectivité GitHub détectée"
         return 1
     fi
 }
@@ -288,29 +371,65 @@ github_setup_wizard() {
     
     # Vérifier les clés SSH
     if ! check_ssh_keys; then
-        if ask_confirmation "Aucune clé SSH trouvée. Voulez-vous en générer une ?"; then
-            generate_ssh_keys
-        fi
+        echo -e "${CYAN}Options d'authentification GitHub:${NC}"
+        echo -e "1. ${YELLOW}Générer une clé SSH (recommandé)${NC}"
+        echo -e "2. ${YELLOW}Configurer l'authentification HTTPS${NC}"
+        echo -e "3. ${YELLOW}Passer cette étape${NC}"
+        
+        read -r -p "Choisissez une option (1-3): " auth_choice
+        
+        case $auth_choice in
+            1)
+                generate_ssh_keys
+                ;;
+            2)
+                print_info "Configuration de l'authentification HTTPS..."
+                git config --global credential.helper store
+                print_success "Credential helper configuré pour HTTPS"
+                print_info "Lors du prochain push/pull, entrez vos identifiants GitHub"
+                ;;
+            3)
+                print_warning "Étape d'authentification ignorée"
+                ;;
+            *)
+                print_error "Option invalide"
+                ;;
+        esac
     fi
     
     # Tester la connexion GitHub
     if ! test_github_connection; then
-        print_warning "La connexion GitHub a échoué."
-        echo -e "${CYAN}Pour résoudre ce problème:${NC}"
-        echo -e "1. ${YELLOW}Allez sur GitHub.com${NC}"
-        echo -e "2. ${YELLOW}Cliquez sur votre avatar → Settings${NC}"
-        echo -e "3. ${YELLOW}SSH and GPG keys → New SSH key${NC}"
-        echo -e "4. ${YELLOW}Copiez votre clé publique:${NC}"
-        echo -e "${WHITE}$(cat ~/.ssh/id_rsa.pub)${NC}"
-        echo -e "5. ${YELLOW}Collez la clé et sauvegardez${NC}"
+        print_warning "La connexion GitHub nécessite une configuration."
+        
+        if [ "$SSH_KEYS_EXIST" = true ]; then
+            echo -e "${CYAN}Pour configurer SSH avec GitHub:${NC}"
+            echo -e "1. ${YELLOW}Allez sur GitHub.com${NC}"
+            echo -e "2. ${YELLOW}Cliquez sur votre avatar → Settings${NC}"
+            echo -e "3. ${YELLOW}SSH and GPG keys → New SSH key${NC}"
+            echo -e "4. ${YELLOW}Copiez votre clé publique:${NC}"
+            
+            # Afficher la première clé publique trouvée
+            local pub_key=$(find ~/.ssh -name "*.pub" | head -1)
+            if [ -n "$pub_key" ]; then
+                echo -e "${WHITE}$(cat "$pub_key")${NC}"
+            else
+                echo -e "${RED}Aucune clé publique trouvée${NC}"
+            fi
+            
+            echo -e "5. ${YELLOW}Collez la clé et sauvegardez${NC}"
+        else
+            echo -e "${CYAN}Pour configurer HTTPS avec GitHub:${NC}"
+            echo -e "1. ${YELLOW}Utilisez vos identifiants GitHub lors du prochain push/pull${NC}"
+            echo -e "2. ${YELLOW}Ou configurez un token d'accès personnel${NC}"
+        fi
         
         if ask_confirmation "Voulez-vous tester à nouveau la connexion ?"; then
             test_github_connection
         fi
     fi
     
-    # Configuration du credential helper
-    if [ "$GITHUB_CONNECTED" = true ]; then
+    # Configuration du credential helper si pas déjà fait
+    if [ "$GITHUB_CONNECTED" = true ] && ! git config --global credential.helper >/dev/null 2>&1; then
         print_info "Configuration du credential helper..."
         git config --global credential.helper store
         print_success "Credential helper configuré"
